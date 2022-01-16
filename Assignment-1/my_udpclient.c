@@ -8,8 +8,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <string.h>
-#define PORT 8080
 
+#define PORT 8181
 #define BUFFER_SIZE 25
 #define MAX_BUF_SIZE 100
 
@@ -17,26 +17,24 @@ int main(int argc, char const *argv[])
 {
 	int sockfd = 0;
 	struct sockaddr_in server_address;
+    socklen_t addrlen = sizeof(server_address);
     
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0)
 	{
 		printf("Socket creation error\n");
 		exit(1);
 	}
 
+    memset(&server_address, 0, sizeof(server_address)); 
+
 	char buffer[BUFFER_SIZE] = {0};
 
-	server_address.sin_family = AF_INET;
-	server_address.sin_port = htons(PORT);
+	// Server information 
+    server_address.sin_family = AF_INET; 
+    server_address.sin_port = htons( PORT ); 
+    server_address.sin_addr.s_addr = INADDR_ANY; 
 	
-	// Convert IPv4 and IPv6 addresses from text to binary form
-	if(inet_pton(AF_INET, "127.0.0.1", &server_address.sin_addr)<=0)
-	{
-		printf("\nInvalid address/ Address not supported \n");
-		return -1;
-	}
-
     if(argc < 2){
         printf("No filename given!\n");
         exit(EXIT_FAILURE);
@@ -50,49 +48,42 @@ int main(int argc, char const *argv[])
         exit(EXIT_FAILURE);
     }
 
-    /*
-     * connect the client socket to the server socket
-    */
-	if (connect(sockfd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        return -1;
-    }
 
     while(1){
 
         int bytes_read = 0;
         char received_message[MAX_BUF_SIZE];
-
+       
         for(;;){
             bytes_read = read(fd, buffer, BUFFER_SIZE);
+            // printf("%d\n",bytes_read);
             if(bytes_read > 0){
                 buffer[bytes_read] = '\0';
-                send(sockfd , buffer, strlen(buffer) , 0 );
-                bytes_read = recv( sockfd , received_message, MAX_BUF_SIZE, 0);
+                int val_read = sendto(sockfd , buffer, strlen(buffer) , 0, (const struct sockaddr *) &server_address, sizeof(server_address) );
+                // printf("%d\n",val_read);
+                // if(val_read < 0){
+                //     perror("Error while sending\n");
+                // }
+                bytes_read = recvfrom( sockfd , received_message, MAX_BUF_SIZE, MSG_WAITALL, (struct sockaddr *) &server_address, &addrlen);
                 if(bytes_read <= 0){
                     break;
                 }
-                received_message[strlen(received_message)] = '\0';
+                // received_message[strlen(received_message)] = '\0';
                 // printf("%ld, %s\n",strlen(received_message), buffer);
             }else{
+                bzero(buffer,sizeof(buffer));
+                int val_read = sendto(sockfd , buffer, strlen(buffer) , 0, (const struct sockaddr *) &server_address, sizeof(server_address) );
+                bytes_read = recvfrom( sockfd , received_message, MAX_BUF_SIZE, MSG_WAITALL, (struct sockaddr *) &server_address, &addrlen);
                 break;
             }
         }
-            
         printf("Message From Server: ");
         printf("%s\n",received_message);
         break;
     }
-    
+
     close(fd);
-    int status = shutdown(sockfd, O_RDWR);
-    if (status < 0)
-    {
-        perror("Error during connection shutdown");
-        exit(EXIT_FAILURE);
-    }
     close(sockfd);
-	
+
 	return 0;
 }

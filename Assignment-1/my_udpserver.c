@@ -7,7 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#define PORT 8080
+#define PORT 8181
 #define BACKLOG 10
 #define MAX_BUF_SIZE 100
 
@@ -49,9 +49,9 @@ int get_statistics(char* str, char* msg, int running_chars, int* words, int* sen
 
 int main(int argc, char const *argv[])
 {
-	int server_fd, client_fd;
+	int sockfd;
 	struct sockaddr_in server_address, client_address;
-    int addrlen = sizeof(client_address);
+    socklen_t addrlen = sizeof(client_address);
     int val_read;
 
     char buffer[MAX_BUF_SIZE] = {0};
@@ -59,83 +59,60 @@ int main(int argc, char const *argv[])
 	/*
      * Create the server side socket file descriptor
     */
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (server_fd == -1){
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == -1){
 		perror("Socket creation failed");
 		exit(EXIT_FAILURE);
 	}
 	
-    /*
-	 * Forcefully attaching socket to the port 8080
-	*/
-    int force = 1;
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &force, sizeof(force)) == -1){
-		perror("Unable to forcefully attach port");
-		exit(EXIT_FAILURE);
-	}
+    memset(&server_address, 0, sizeof(server_address)); 
+    memset(&client_address, 0, sizeof(client_address)); 
 
 	server_address.sin_family = AF_INET;
 	server_address.sin_addr.s_addr = INADDR_ANY;
 	server_address.sin_port = htons( PORT );
 	
     /*
-	 * Bind the socket to the port 8080
+	 * Bind the socket to the port 8181
 	*/
-    if (bind(server_fd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
+    if (bind(sockfd, (const struct sockaddr *)&server_address, sizeof(server_address)) < 0)
 	{
 		perror("Bind failed");
 		exit(EXIT_FAILURE);
 	}
-	
-    if (listen(server_fd, BACKLOG) < 0)
-    {
-        perror("Error while listening for incoming connections");
-        exit(EXIT_FAILURE);
-    }
 
     printf("\
     ***********************\n\
-    *     TCP SERVER UP   *\n\
+    *     UDP SERVER UP   *\n\
     ***********************\n\n");
     
 
     while(1){
         
-        client_fd = accept(server_fd, (struct sockaddr *)& client_address, (socklen_t*)& addrlen );
-        
-        if (client_fd < 0){
-            perror("Failed to Accept Connection");
-            exit(EXIT_FAILURE);
-        }
-
         int running_chars = 0;
         int words = 0, sentences = 0, characters = 0;
+
+        char msg_from_server[MAX_BUF_SIZE];
+
         // Keep Reading from the client
+        
         for(;;){
-            val_read = recv( client_fd , buffer, MAX_BUF_SIZE, 0);
+            val_read = recvfrom( sockfd , buffer, MAX_BUF_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &addrlen);
             buffer[val_read] = '\0';
-           
+            printf("val_read = %d\n",val_read);
+
             if(val_read > 0){
                 printf("Receiving...\n");
                 // printf("%s\n",buffer );
-                // printf("val_read = %d\n",val_read);
-                char msg_from_server[MAX_BUF_SIZE];
                 running_chars = get_statistics(buffer, msg_from_server, running_chars, &words, &sentences, &characters); 
                 // printf("\nSending Statistics to client for this chunk.\n");
-                send(client_fd , msg_from_server , strlen(msg_from_server) , 0);
+                sendto(sockfd , msg_from_server , strlen(msg_from_server) , 0,  (struct sockaddr *) &client_address, addrlen);
                 printf("\n");
             } else {
-                int status = shutdown(client_fd, SHUT_RDWR);
-                if (status < 0)
-                {
-                    perror("Error during connection shutdown");
-                    exit(EXIT_FAILURE);
-                }
-                close(client_fd);
+                sendto(sockfd , msg_from_server , strlen(msg_from_server) , 0,  (struct sockaddr *) &client_address, addrlen);
                 break;
             }
         }
-       
     }
 
 	return 0;
