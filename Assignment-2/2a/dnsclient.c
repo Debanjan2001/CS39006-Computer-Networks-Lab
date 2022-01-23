@@ -64,15 +64,21 @@ int main(int argc, char const *argv[])
 	}
 	printf("\nDNS Name Successfully Sent! :-)\n\n");
 
+
 	char received_message[MAX_IP_ADDR_LIST_LEN];
 	bytes_read = recvfrom( sockfd , received_message, MAX_IP_ADDR_LIST_LEN, 0, (struct sockaddr *) &server_address, &addrlen);
 	if (bytes_read == -1) {
 		printf("Waited for 2 seconds...\nNo Response From Server, Exiting!\n");
 		exit(EXIT_FAILURE);
 	}
+	
 	// Print the final message received from the server
-	printf("IP Address(es) Received From Server.\n");
-	printf("IP Address(es) : %s\n", received_message);
+	if(strcmp(received_message,"0.0.0.0") == 0){
+		printf("No IP Address Resolved (0.0.0.0 Returned)\n");
+	}else{
+		printf("IP Address(es) Received From Server.\n");
+		printf("IP Address(es) :%s\n", received_message);
+	}
 
 	close(sockfd);
 

@@ -48,6 +48,12 @@ int main(int argc, char const *argv[])
 
 	char buffer[MAX_BUF_SIZE] = {0};
 
+	memset(&server_address, 0, sizeof(server_address));
+	memset(&client_address, 0, sizeof(client_address));
+
+	server_address.sin_family = AF_INET;
+	server_address.sin_addr.s_addr = INADDR_ANY;
+	server_address.sin_port = htons( PORT );
 
 	/*
 	 * +--------------------+
@@ -85,12 +91,6 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	memset(&server_address, 0, sizeof(server_address));
-	memset(&client_address, 0, sizeof(client_address));
-
-	server_address.sin_family = AF_INET;
-	server_address.sin_addr.s_addr = INADDR_ANY;
-	server_address.sin_port = htons( PORT );
 
 	/*
 	 * +--------------------+
@@ -113,29 +113,11 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-
-
-	struct sigaction sa;
-
-	/*
-	 * According to Beej's guide,
-	 * The code that’s there is responsible for reaping zombie processes that appear as the fork()ed child processes exit.
-	 * If you make lots of zombies and don’t reap them, your system administrator will become agitated.
-	*/
-	sa.sa_handler = sigchld_handler; // reap all dead processes
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART;
-	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-		perror("sigaction");
-		exit(1);
-	}
-
 	fd_set readfds;
 	int numfd_max, ready_fd;
 
 	// clear the set ahead of time
 	FD_ZERO(&readfds);
-
 
 	/*
 	 * +--------------------+
@@ -159,11 +141,6 @@ int main(int argc, char const *argv[])
 
 		// select socket that has data ready to be recv()d
 		ready_fd = select(numfd_max, &readfds, NULL, NULL, NULL);
-
-		if (ready_fd == -1) {
-			perror("Error occured in select");
-			continue;
-		}
 
 		// printf("Waiting for a client...\n\n");
 
@@ -219,6 +196,7 @@ int main(int argc, char const *argv[])
 				// printf("child exiting\n");
 				exit(0);
 			}
+			close(client_fd);
 		}
 
 		/*
@@ -258,7 +236,6 @@ int main(int argc, char const *argv[])
 			bytes_read = sendto(udp_sockfd , ip_addresses, strlen(ip_addresses) , 0, (const struct sockaddr *) &client_address, sizeof(client_address) );
 			printf("IP Address has been sent back!\n\n");
 		}
-
 
 	}
 
