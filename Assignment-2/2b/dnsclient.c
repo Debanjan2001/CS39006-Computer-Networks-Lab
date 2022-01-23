@@ -18,8 +18,8 @@
 #include <unistd.h>
 
 #define PORT 8181
-#define MAX_BUF_SIZE 100
-#define MAX_IP_ADDR_LIST_LEN 1000
+#define MAX_BUF_SIZE 256
+#define MAX_IP_ADDR_LIST_LEN 512
 
 int main(int argc, char const *argv[])
 {
@@ -64,24 +64,14 @@ int main(int argc, char const *argv[])
 	}
 	printf("\nDNS Name Successfully Sent! :-)\n\n");
 
-	// fd_set readfds;
-	// FD_ZERO(&readfds);
-	// FD_SET(sockfd, &readfds);
-	// int readyfd = select(sockfd+1,&readfds,NULL, NULL, &tv);
-	// if(readyfd < 0){
-	// 	perror("Select error");
-	// 	exit(1);
-	// }else if(readyfd == 0){
-	// 	printf("waited for 2 second, but no response\n");
-	// 	exit(1);
-	// }
-
 	char received_message[MAX_IP_ADDR_LIST_LEN];
 	bytes_read = recvfrom( sockfd , received_message, MAX_IP_ADDR_LIST_LEN, 0, (struct sockaddr *) &server_address, &addrlen);
 	if (bytes_read == -1) {
 		printf("Waited for 2 seconds...\nNo Response From Server, Exiting!\n");
 		exit(EXIT_FAILURE);
 	}
+    received_message[bytes_read] = '\0';
+
 	// Print the final message received from the server
 	if(strcmp(received_message,"0.0.0.0") == 0){
 		printf("No IP Address Resolved (0.0.0.0 Returned)\n");

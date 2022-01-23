@@ -18,8 +18,8 @@
 #include <unistd.h>
 
 #define PORT 8080
-#define MAX_BUF_SIZE 100
-#define MAX_IP_ADDR_LIST_LEN 1000
+#define MAX_BUF_SIZE 256
+#define MAX_IP_ADDR_LIST_LEN 512
 
 int main(int argc, char const *argv[])
 {
@@ -34,6 +34,7 @@ int main(int argc, char const *argv[])
 		exit(1);
 	}
 
+	// Setup a timeout of 2 seconds for this UDP socket
 	struct timeval tv;
 	tv.tv_sec = 2;
 	tv.tv_usec = 0;
@@ -67,6 +68,8 @@ int main(int argc, char const *argv[])
 
 	char received_message[MAX_IP_ADDR_LIST_LEN];
 	bytes_read = recvfrom( sockfd , received_message, MAX_IP_ADDR_LIST_LEN, 0, (struct sockaddr *) &server_address, &addrlen);
+	received_message[bytes_read]='\0';
+	
 	if (bytes_read == -1) {
 		printf("Waited for 2 seconds...\nNo Response From Server, Exiting!\n");
 		exit(EXIT_FAILURE);

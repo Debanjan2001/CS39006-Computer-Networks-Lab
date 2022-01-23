@@ -21,20 +21,16 @@
 #include <netdb.h>
 
 #define PORT 8181
+#define MAX_BUF_SIZE 256
+#define MAX_IP_ADDR_LIST_LEN 512
 #define BACKLOG 10
-#define MAX_BUF_SIZE 100
-#define MAX_IP_ADDR_LIST_LEN 1000
+
 
 int max(int a, int b) {
 	if (a > b) {
 		return a;
 	}
 	return b;
-}
-
-void sigchld_handler(int s)
-{
-	while (wait(NULL) > 0);
 }
 
 int main(int argc, char const *argv[])
@@ -177,7 +173,6 @@ int main(int argc, char const *argv[])
 				char ip_addresses[MAX_IP_ADDR_LIST_LEN];
 				if ( host_info == NULL ) {
 					// herror("gethostbyname failed");
-					// continue;
 					strcpy(ip_addresses, "0.0.0.0");
 				} else {
 					// success
@@ -191,7 +186,7 @@ int main(int argc, char const *argv[])
 				}
 
 				bytes_read = send(client_fd , ip_addresses , strlen(ip_addresses) , 0);
-				printf("IP Address has been sent back!\n\n");
+				printf("IP Address(es) has been sent back!\n\n");
 				// child terminates
 				// printf("child exiting\n");
 				exit(0);
@@ -234,7 +229,7 @@ int main(int argc, char const *argv[])
 			}
 
 			bytes_read = sendto(udp_sockfd , ip_addresses, strlen(ip_addresses) , 0, (const struct sockaddr *) &client_address, sizeof(client_address) );
-			printf("IP Address has been sent back!\n\n");
+			printf("IP Address(es) has been sent back!\n\n");
 		}
 
 	}

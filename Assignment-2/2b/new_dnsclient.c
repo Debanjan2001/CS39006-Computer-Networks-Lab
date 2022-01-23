@@ -15,9 +15,8 @@
 #include <string.h>
 
 #define PORT 8181
-#define MAX_BUF_SIZE 100
-#define MAX_IP_ADDR_LIST_LEN 1000
-
+#define MAX_BUF_SIZE 256
+#define MAX_IP_ADDR_LIST_LEN 512
 
 int main(int argc, char const *argv[])
 {
@@ -32,17 +31,6 @@ int main(int argc, char const *argv[])
 		exit(1);
 	}
 
-    struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-		perror("Timeout Setup Error");
-		exit(EXIT_FAILURE);
-	}
-	if (setsockopt (sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv,sizeof(tv) ) < 0){
-		perror("setsockopt failed\n");
-	}
-
 	server_address.sin_family = AF_INET;
 	server_address.sin_port = htons(PORT);
 
@@ -52,6 +40,11 @@ int main(int argc, char const *argv[])
 		printf("\nInvalid address/ Address not supported \n");
 		return -1;
 	}
+
+	// Prompt User for DNS Name
+    char domain_name[MAX_BUF_SIZE];
+	printf(">> Enter a DNS Name: ");
+	scanf("%s", domain_name);
 
 	/*
 	 * Connect the client socket to the server socket
@@ -64,13 +57,9 @@ int main(int argc, char const *argv[])
 
     printf("\nConnected to Server on port %d...\n\n",PORT);
 
-    char domain_name[MAX_BUF_SIZE];
-	printf(">> Enter a DNS Name: ");
-	scanf("%s", domain_name);
 
 	strcpy(buffer, domain_name);
 	int bytes_read = 0;
-
 	
     bytes_read = send(sockfd , buffer, strlen(buffer) , 0 );
     if(bytes_read < 0){
@@ -82,7 +71,8 @@ int main(int argc, char const *argv[])
 
     bytes_read = recv( sockfd , received_message, MAX_IP_ADDR_LIST_LEN, 0);
     received_message[bytes_read] = '\0';
-    if (bytes_read <= 0) {
+
+    if (bytes_read < 0) {
         printf("Error during Receiving IP Addresses. Please Retry!\n");
         exit(EXIT_FAILURE);
     }

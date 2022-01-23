@@ -18,8 +18,8 @@
 #include <netdb.h>
 
 #define PORT 8080
-#define MAX_BUF_SIZE 100
-#define MAX_IP_ADDR_LIST_LEN 1000
+#define MAX_BUF_SIZE 256
+#define MAX_IP_ADDR_LIST_LEN 512
 
 int main(int argc, char const *argv[])
 {
@@ -58,11 +58,11 @@ int main(int argc, char const *argv[])
 	}
 
 	printf("\n\
-    +-------------------------------------+\n\
-    |<<< DNS Server is up and running  >>>|\n\
-    |<<<                               >>>|\n\
-    |<<<     Press Ctrl + C to stop    >>>|\n\
-    +-------------------------------------+\n\n");
+    +---------------------------------------+\n\
+    |<<<   DNS Server is up and running  >>>|\n\
+    |<<<                                 >>>|\n\
+    |<<<     Press Ctrl + C to stop      >>>|\n\
+    +---------------------------------------+\n\n");
 
 	while (1) {
 		// printf("Waiting for a client...\n\n");
@@ -77,7 +77,6 @@ int main(int argc, char const *argv[])
 		char ip_addresses[MAX_IP_ADDR_LIST_LEN];
 		if ( host_info == NULL ) {
 			// herror("gethostbyname failed");
-			// continue;
 			strcpy(ip_addresses, "0.0.0.0");
 		} else {
 			// success
