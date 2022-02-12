@@ -28,6 +28,7 @@
 
 #define PORT 65532
 #define MAX_BUF_SIZE 512
+#define MAX_CMD_LEN 200
 #define BACKLOG 15
 
 const char* SUCCESSFUL_REQUEST = "200";
@@ -218,7 +219,7 @@ int main(int argc, char const *argv[]) {
 			perror("Failed to Accept TCP Connection");
 			continue;
 		}
-		printf("Connection Accepted For Client#%d!\n",client_fd);
+		printf("Connection Accepted For a Client!\n");
 
 
 		pid_t pid = fork();
@@ -234,7 +235,8 @@ int main(int argc, char const *argv[]) {
 
 			char current_directory[MAX_BUF_SIZE];
 			getcwd(current_directory, sizeof(current_directory));
-			printf("dir:: %s\n", current_directory);
+			// printf("dir:: %s\n", current_directory);
+
 			/*
 			* +--------------------+
 			* |  User-Auth Check   |
@@ -245,7 +247,7 @@ int main(int argc, char const *argv[]) {
 
 				// Wait for 'user <username>'
 				bzero(buffer, sizeof(buffer));
-				bytes_read = recv( client_fd , buffer, MAX_BUF_SIZE, 0);
+				bytes_read = recv( client_fd , buffer, MAX_CMD_LEN, 0);
 				if (bytes_read == -1) {
 					printf("Error during Receiving from Client. Please Reconnect!\n");
 					break;
@@ -270,17 +272,20 @@ int main(int argc, char const *argv[]) {
 					// Check if username actually exists
 					if (check_username(username)) {
 						// exists
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, SUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 						// success means move forward and wait for password
 					} else {
 						// doesnt exist
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, UNSUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 						// Failure means repeat the process
 						continue;
 					}
 				} else {
+					bzero(buffer, sizeof(buffer));
 					strcpy(buffer, INVALID_REQUEST);
 					bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 					// If command is not 'user' means repeat the process
@@ -288,7 +293,8 @@ int main(int argc, char const *argv[]) {
 				}
 
 				// Wait for 'pass <password>'
-				bytes_read = recv( client_fd , buffer, MAX_BUF_SIZE, 0);
+				bzero(buffer, sizeof(buffer));
+				bytes_read = recv( client_fd , buffer, MAX_CMD_LEN, 0);
 				if (bytes_read == -1) {
 					printf("Error during Receiving from Client. Please Reconnect!\n");
 					break;
@@ -309,18 +315,21 @@ int main(int argc, char const *argv[]) {
 					// Check if Password actually exists
 					if (check_password(username, password)) {
 						// exists
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, SUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 						// In case of success , break out of this authentication loop
 						break;
 					} else {
 						// doesnt match
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, UNSUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 						// Failure means repeat the process
 						continue;
 					}
 				} else {
+					bzero(buffer, sizeof(buffer));
 					strcpy(buffer, INVALID_REQUEST);
 					bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 					// If command is not 'pass' means repeat the process
@@ -340,7 +349,8 @@ int main(int argc, char const *argv[]) {
 				printf("File service waiting...\n");
 				fflush(stdout);
 
-				bytes_read = recv( client_fd , buffer, MAX_BUF_SIZE, 0);
+				bzero(buffer, sizeof(buffer));
+				bytes_read = recv( client_fd , buffer, MAX_CMD_LEN, 0);
 				if (bytes_read == -1) {
 					printf("Error during Receiving from Client. Please Reconnect!\n");
 					break;
@@ -362,12 +372,13 @@ int main(int argc, char const *argv[]) {
 					struct dirent *dir_entry;
 
 					// opendir() returns a pointer of DIR type.
-					printf("dir:: %s\n", current_directory);
+					
+					// printf("dir:: %s\n", current_directory);
 					DIR *dr = opendir(current_directory);
 					
 					// opendir returns NULL if couldn't open directory
 					if (dr == NULL) {
-						printf("Could not open current directory! Try again");
+						printf("ERROR:: Directory not found\n");
 						continue;
 					}
 
@@ -375,11 +386,12 @@ int main(int argc, char const *argv[]) {
 					while ((dir_entry = readdir(dr)) != NULL) {
 						bzero(buffer, sizeof(buffer));
 						strcat(buffer, dir_entry->d_name);
-						printf("file:: %s\n", dir_entry->d_name);
+						// printf("file:: %s\n", dir_entry->d_name);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 						bzero(buffer, sizeof(buffer));
 						bytes_read = send(client_fd, NULL_STRING, 1, 0);
 					}
+					bzero(buffer, sizeof(buffer));
 					bytes_read = send(client_fd, NULL_STRING, 1, 0);
 
 					closedir(dr);
@@ -396,11 +408,13 @@ int main(int argc, char const *argv[]) {
 
 						getcwd(current_directory, sizeof(current_directory));
 
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, SUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 
 					} else {
 						// error
+						bzero(buffer, sizeof(buffer));
 						strcpy(buffer, UNSUCCESSFUL_REQUEST);
 						bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
 					}
@@ -453,7 +467,7 @@ int main(int argc, char const *argv[]) {
 					int bytes_read = read(file_descriptor, buffer, MAX_CHUNK_SIZE);
 					buffer[bytes_read] = '\0';
 
-					printf("Started...\n");
+					printf("Started File Transfer...\n");
 					fflush(stdout);
 
 					while (1) {
@@ -496,8 +510,8 @@ int main(int argc, char const *argv[]) {
 						// printf("Sending %ld bytes! and status=%d\n", strlen(data_block),status);
 						// printf("Sent :%s\n\n\n", data_block);
 
-						printf("Sent %d bytes : %s\n\n",bytes_read, data_block);
-						fflush(stdout);
+						// printf("Sent %d bytes : %s\n\n",bytes_read, data_block);
+						// fflush(stdout);
 
 						if(next_bytes_read == 0){
 							// no more bytes to read after the data in 'buffer'
@@ -567,23 +581,9 @@ int main(int argc, char const *argv[]) {
 						bzero(buffer,sizeof(buffer));
 						bytes_read = recv(client_fd, tempsz, 2, MSG_WAITALL);
 						memcpy(&header2, &tempsz, sizeof(tempsz));
-						// bytes_read=recv(client_fd,buffer, HEADER_LEN, 0);
-						// if(bytes_read < 0){
-						// 	printf("Some Error Occurred during receiving from client!\n");
-						// 	// exit(0);
-						// 	continue;
-						// }
-						// buffer[bytes_read] = '\0';
-						// printf("READ => %s\n", hdr);
+					
+						// printf("Bytes_READ=%d, header1=%c, header2 = %d\n",bytes_read, header1, header2);
 						// fflush(stdout);
-
-						
-						// for(int i=1;i<=5;i++){
-						// 	// printf("Debug: %c\n",buffer[i]);
-						// 	header2 = header2*10 + (buffer[i]-'0');
-						// }
-						printf("Bytes_READ=%d, header1=%c, header2 = %d\n",bytes_read, header1, header2);
-						fflush(stdout);
 						
 						int read_left = header2;
 
@@ -605,7 +605,7 @@ int main(int argc, char const *argv[]) {
 							read_left -= bytes_read;
 						}
 
-						printf("Left=> %d\n",read_left);
+						// printf("Left=> %d\n",read_left);
 
 						if(header1 == 'L'){
 							// printf("L found\n");
@@ -616,19 +616,21 @@ int main(int argc, char const *argv[]) {
 					close(file_descriptor);
 
 				} else {
-					strcpy(buffer, "Your Command is Invalid!");
-					// bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
+					// strcpy(buffer, "Your Command is Invalid!");
+					// // bytes_read = send(client_fd , buffer , strlen(buffer) , 0);
+					
+					// DO NOTHING
 				}
 
-				printf("Restarting File Service!\n---------------\n");
+				printf("Reinitiating File Services!\n---------------\n");
 			}
 
 
 			/* --- HANDLE CLOSING THE CONNECTION */
-			printf("Connection Closed by Client#%d!\n",client_fd);
+			printf("Connection Closed by the Client!\n");
 			// child terminates
 			close(client_fd);
-			printf("child exiting\n");
+			// printf("child exiting\n");
 			exit(0);
 		}else{
 			close(client_fd);

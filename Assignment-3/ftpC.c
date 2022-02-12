@@ -11,18 +11,19 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 const char* CMDPROMPT ="myFTP>";
 const char* CMDSUCCESS= "Command executed successfully.\n";
 
-#define ECMDLEN 1000
-#define CMDLEN 50
-#define ARGSLEN 500
+#define ECMDLEN 200
+#define CMDLEN 30
+#define ARGSLEN 150
 #define IPLEN 50
 #define PORTLEN 10
 #define UNAMELEN 250
 #define PASSLEN 250
-#define DIRPATHLEN 450
+#define DIRPATHLEN 75
 #define MSGBLOCKLEN 1000
 #define ERRCODELEN 3
 #define HEADERLEN 3
@@ -32,7 +33,7 @@ const char* USER ="user";
 const char* PASS ="pass";
 const char* CHDIR = "cd";
 const char* LOCALCD = "lcd";
-const char* DIR= "dir";
+const char* DIRN= "dir";
 const char* GET= "get";
 const char* PUT= "put";
 const char* MGET ="mget";
@@ -61,16 +62,16 @@ int handleGet(int sock, const char* cmd, char* remoteFile, char* localFile, int 
 	
 	int targetFile = -1;
 	if ((targetFile = open(localFile, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) {
-		printf("ERROR:: cannot be opened target file on the local client; no request sent to the server...\n");
+		printf("ERROR:: cannot open target file on the local client; no request sent to the server...\n");
 		return -1;
 	}
 
 	if(_DEBUG) {printf(">> LOCALFILE: access available.\n");}
 
 	memset(buffer, 0, MSGBLOCKLEN);
-	sprintf(buffer, "%s %s", cmd, remoteFile);
+	sprintf(buffer, "%s %s %s", cmd, remoteFile, localFile);
 
-	if (send(sock, buffer, strlen(buffer), 0) < 0) {
+	if (send(sock, buffer, ECMDLEN, 0) < 0) {
 		printf("ERROR:: message sending to the server failed.\n");
 		return -1;
 	}
@@ -82,9 +83,9 @@ int handleGet(int sock, const char* cmd, char* remoteFile, char* localFile, int 
 		printf("ERROR:: failed to recieve a server response.\n");
 		return -1;
 	}
-	printf("%d : %s", char_read, rcbuffer);
+	// printf("%d : %s", char_read, rcbuffer);
 	int rc_code = atoi(rcbuffer);
-	printf("%d", rc_code);
+	// printf("%d", rc_code);
 	if(rc_code == ERRINV) {
 		printf("ERROR[code:%d] :: remote file does not exist.\n", ERRINV);
 		return -1;
@@ -123,7 +124,8 @@ int handleGet(int sock, const char* cmd, char* remoteFile, char* localFile, int 
 		memcpy(&temp, &tempsz, sizeof(tempsz));
 		// msgsize = ntohs(temp);
 		chunkSize = leftover = temp;
-		printf("leftover = %d\n",leftover);
+
+		// printf("leftover = %d\n",leftover);
 
 		while(leftover > 0) {
 			if(_DEBUG) {printf(">> message recieved [%ld bytes] : [%s]\n", strlen(rcbuffer), rcbuffer);}
@@ -132,10 +134,13 @@ int handleGet(int sock, const char* cmd, char* remoteFile, char* localFile, int 
 				printf("ERROR:: failed to recieve a server response.\n");
 				break;
 			}
-			printf("charread = %d\n",char_read);
-			if(char_read < min(leftover, MSGBLOCKLEN)) {
-				printf("recv() maybe problematic.\n");
-			}
+
+			// printf("charread = %d\n",char_read);
+			
+			// if(char_read < min(leftover, MSGBLOCKLEN)) {
+			// 	printf("recv() maybe problematic.\n");
+			// }
+
 			if(write(targetFile, rcbuffer, char_read) < 0) {
 				printf("ERROR:: write failed on file [%s]. contents may not be trusted.\n", remoteFile);
 				exit(EXIT_FAILURE);
@@ -169,7 +174,7 @@ int handlePut(int sock, const char* cmd, char* localFile, char* remoteFile, int 
 	memset(buffer, 0, MSGBLOCKLEN);
 	sprintf(buffer, "%s %s %s", cmd, localFile, remoteFile);
 
-	if (send(sock, buffer, strlen(buffer), 0) < 0) {
+	if (send(sock, buffer, ECMDLEN, 0) < 0) {
 		printf("ERROR:: message sending to the server failed.\n");
 		return -1;
 	}
@@ -178,7 +183,7 @@ int handlePut(int sock, const char* cmd, char* localFile, char* remoteFile, int 
 	int terminate = 0;
 
 	memset(rcbuffer, 0, MSGBLOCKLEN);
-	if ((char_read = recv(sock, rcbuffer, ERRCODELEN, 0)) < 0) {
+	if ((char_read = recv(sock, rcbuffer, ERRCODELEN, MSG_WAITALL)) < 0) {
 		printf("ERROR:: failed to recieve a server response.\n");
 		return -1;
 	}
@@ -266,6 +271,10 @@ int main (int argc, char const * argv[]) {
 	char entered_cmd[ECMDLEN];
 	char cmd[CMDLEN];
 	char args[ARGSLEN];
+
+	memset(cmd, 0, sizeof(cmd));
+	memset(args, 0, sizeof(args));
+	memset(entered_cmd, 0, sizeof(entered_cmd));
 	int c = 0;
 
 	int login = 0;
@@ -285,6 +294,9 @@ int main (int argc, char const * argv[]) {
 
 
 		printf("%s ", CMDPROMPT);
+		memset(cmd, 0, sizeof(cmd));
+		memset(args, 0, sizeof(args));
+		memset(entered_cmd, 0, sizeof(entered_cmd));
 		fgets(entered_cmd, CMDLEN, stdin);
 		trim(entered_cmd);
 
@@ -343,13 +355,13 @@ int main (int argc, char const * argv[]) {
 			sprintf(buffer, "%s %s", cmd, username);
 			if(_DEBUG) { printf(">> message to be sent [%ld bytes] = [%s]\n", strlen(buffer), buffer); }
 
-			if(send(sock, buffer, strlen(buffer), 0) < 0) {
+			if(send(sock, buffer, ECMDLEN, 0) < 0) {
 				printf("ERROR:: message sending to the server failed.\n");
 				continue;
 			}
 
 			memset(rcbuffer, 0, sizeof(rcbuffer));
-			int char_read = recv(sock, rcbuffer, ERRCODELEN, 0);
+			int char_read = recv(sock, rcbuffer, ERRCODELEN, MSG_WAITALL);
 			if (char_read < 0) {
 				printf("ERROR:: failed to recieve a response from the server.\n");
 				continue;
@@ -367,7 +379,7 @@ int main (int argc, char const * argv[]) {
 				continue;
 			}
 			else if(rc_code == OK) {
-				printf("User [%s] validated. \n", username);
+				printf("User [%s] validated. [code:%d] \n", username, OK);
 				printf("%s",CMDSUCCESS);
 				login += 1;
 			}
@@ -390,14 +402,14 @@ int main (int argc, char const * argv[]) {
 			sprintf(buffer, "%s %s", cmd, password);
 			if(_DEBUG) { printf(">> message to be sent [%ld bytes] = [%s]\n", strlen(buffer), buffer); }
 
-			if(send(sock, buffer, strlen(buffer), 0) < 0) {
+			if(send(sock, buffer, ECMDLEN, 0) < 0) {
 				printf("ERROR:: message sending to the server failed.\n");
 				login = 0;
 				continue;
 			}
 
 			memset(rcbuffer, 0, sizeof(rcbuffer));
-			int char_read = recv(sock, rcbuffer, ERRCODELEN, 0);
+			int char_read = recv(sock, rcbuffer, ERRCODELEN, MSG_WAITALL);
 			if(_DEBUG) { printf(">> message recieved [%d bytes] = [%s]\n", char_read, rcbuffer); }
 
 			if (char_read < 0) {
@@ -417,7 +429,7 @@ int main (int argc, char const * argv[]) {
 				continue;
 			}
 			else if(rc_code == OK) {
-				printf("Password [%s] validated. \n", password);
+				printf("Password [%s] validated. [code=%d] \n", password, OK);
 				printf("%s",CMDSUCCESS);
 				login += 1;
 			}
@@ -440,13 +452,13 @@ int main (int argc, char const * argv[]) {
 			sprintf(buffer, "%s %s", cmd, dir);
 			if(_DEBUG) { printf(">> message to be sent [%ld bytes] = [%s]\n", strlen(buffer), buffer); }
 
-			if(send(sock, buffer, MSGBLOCKLEN, 0) < 0) {
+			if(send(sock, buffer, ECMDLEN, 0) < 0) {
 				printf("ERROR:: message sending to the server failed.\n");
 				continue;
 			}
 
 			memset(rcbuffer, 0, sizeof(rcbuffer));
-			int char_read = recv(sock, rcbuffer, ERRCODELEN, 0);
+			int char_read = recv(sock, rcbuffer, ERRCODELEN, MSG_WAITALL);
 			if (char_read < 0) {
 				printf("ERROR:: failed to recieve a response from the server.\n");
 				continue;
@@ -454,7 +466,7 @@ int main (int argc, char const * argv[]) {
 
 			int rc_code = atoi(rcbuffer);
 			if(rc_code == ERRINV) {
-				printf("ERROR[code:%d] :: invalid password.\n", ERRINV);
+				printf("ERROR[code:%d] :: invalid server directory path.\n", ERRINV);
 				continue;
 			}
 			else if(rc_code == OK) {
@@ -476,20 +488,23 @@ int main (int argc, char const * argv[]) {
 			sscanf(args, "%s", dir);
 			if(_DEBUG) { printf(">> LOCALCD : Directory = [%s]\n", dir); }
 
-			char newdir[DIRPATHLEN];
+			char newdir[MSGBLOCKLEN];
+			memset(newdir,0,sizeof(newdir));
 			if (chdir(dir) < 0) {
 				printf("ERROR:: cannot change directory.\n");
 				continue;
 			}
 			else {
-				printf("Current working directory changed to [%s]\n", getcwd(newdir, DIRPATHLEN));
+				getcwd(newdir, sizeof(newdir));
+				printf("Current working directory changed to [%s]\n", newdir);
+				// fflush(stdout);
 				printf("%s",CMDSUCCESS);
 			}
 		}
 
 
 
-		else if(connected == 1 && login == 2 && strcmp(cmd, DIR) == 0) {
+		else if(connected == 1 && login == 2 && strcmp(cmd, DIRN) == 0) {
 		// 6. dir
 			if(_DEBUG) { printf(">> DIR\n"); }
 
@@ -497,7 +512,7 @@ int main (int argc, char const * argv[]) {
 			strcpy(buffer, cmd);
 			if(_DEBUG) { printf(">> message to be sent [%ld bytes] = [%s]\n", strlen(buffer), buffer); }
 
-			if(send(sock, buffer, strlen(buffer), 0) < 0) {
+			if(send(sock, buffer, ECMDLEN, 0) < 0) {
 				printf("ERROR:: message sending to the server failed.\n");
 				continue;
 			}
@@ -506,7 +521,7 @@ int main (int argc, char const * argv[]) {
 			int flag = 0, over = 0;
 			char filename[DIRPATHLEN];
 			int pointer = 0;
-			fflush(stdout);
+			// fflush(stdout);
 			while(1) {
 				memset(rcbuffer, 0, sizeof(rcbuffer));
 				char_read = recv(sock, rcbuffer, MSGBLOCKLEN, 0);
@@ -522,9 +537,9 @@ int main (int argc, char const * argv[]) {
 					if(rcbuffer[i] == 0) {
 						flag += 1;
 						if(flag == 1) {
-							fflush(stdout);
-							filename[pointer] = '\n';
-							printf(">> %s", filename);
+							// fflush(stdout);
+							filename[pointer] = '\0';
+							printf(">> %s\n", filename);
 							memset(filename,0,sizeof(filename));
 							pointer = 0;
 						}
@@ -617,7 +632,7 @@ int main (int argc, char const * argv[]) {
 			memset(filename, 0, sizeof(filename));
 			int pointer = 0;
 			strcat(args, "\n");
-			for(int i = 0; i < sizeof(args); i++) {
+			for(int i = 0; i < strlen(args); i++) {
 				if(args[i] == '\n' || args[i] == ',') {
 					char copyfilename[DIRPATHLEN];
 					strcpy(copyfilename, filename);
