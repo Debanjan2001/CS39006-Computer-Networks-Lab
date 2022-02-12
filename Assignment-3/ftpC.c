@@ -1,3 +1,11 @@
+/*
+ * Name - Debanjan Saha + Pritkumar Godhani
+ * Roll - 19CS30014 + 19CS10048
+ * Assignment - 3
+ * Description - File Transfer Using Sockets
+ * Networks_Lab
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -291,19 +299,17 @@ int main (int argc, char const * argv[]) {
 
 	while(1) {
 
-
-
 		printf("%s ", CMDPROMPT);
 		memset(cmd, 0, sizeof(cmd));
 		memset(args, 0, sizeof(args));
 		memset(entered_cmd, 0, sizeof(entered_cmd));
-		fgets(entered_cmd, CMDLEN, stdin);
+		fgets(entered_cmd, ECMDLEN, stdin);
 		trim(entered_cmd);
 
 		if(_DEBUG) { printf(">> The command entered is [%ld]: [%s] \n", strlen(entered_cmd), entered_cmd); }
 		
 		sscanf(entered_cmd, "%s%[^\n]", cmd, args);
-
+		// printf("args = %s\n", args);
 
 
 		if(strcmp(cmd, OPEN) == 0) {
@@ -603,7 +609,7 @@ int main (int argc, char const * argv[]) {
 			memset(filename, 0, sizeof(filename));
 			int pointer = 0;
 			strcat(args, "\n");
-			for(int i = 0; i < sizeof(args); i++) {
+			for(int i = 0; i < strlen(args); i++) {
 				if(args[i] == '\n' || args[i] == ',') {
 					char copyfilename[DIRPATHLEN];
 					strcpy(copyfilename, filename);
@@ -615,7 +621,7 @@ int main (int argc, char const * argv[]) {
 					memset(filename, 0, sizeof(filename));
 					pointer = 0;
 				}
-				else if(!isspace(args[i])) {
+				else if(args[i] != ' ') {
 					filename[pointer] = args[i];
 					pointer++;
 				}
@@ -632,6 +638,7 @@ int main (int argc, char const * argv[]) {
 			memset(filename, 0, sizeof(filename));
 			int pointer = 0;
 			strcat(args, "\n");
+			// printf("%s, %d", args, strlen(args));
 			for(int i = 0; i < strlen(args); i++) {
 				if(args[i] == '\n' || args[i] == ',') {
 					char copyfilename[DIRPATHLEN];
@@ -644,7 +651,7 @@ int main (int argc, char const * argv[]) {
 					memset(filename, 0, sizeof(filename));
 					pointer = 0;
 				}
-				else if(!isspace(args[i])) {
+				else if(args[i] != ' ') {
 					filename[pointer] = args[i];
 					pointer++;
 				}
@@ -679,3 +686,5 @@ int main (int argc, char const * argv[]) {
 
 
 }
+
+// mput README.md, user.txt, ass3.pdf
