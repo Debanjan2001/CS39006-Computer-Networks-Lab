@@ -1,0 +1,9 @@
+gcc user1.c -lpthread -o user1
+./user1
+
+gcc user2.c -lpthread -o user2
+./user2
+
+Library and linking is left.
+Only few tests done.
+Test more.

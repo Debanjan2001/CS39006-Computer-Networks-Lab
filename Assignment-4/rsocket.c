@@ -17,6 +17,11 @@
 
 #include <pthread.h>
 
+#include <time.h>
+
+#define OK 0;
+#define ERR -1;
+
 #define SOCK_MRP 48
 #define MAX_TABLE_SIZE 50
 #define MAX_SEQ_NUM 100
@@ -25,6 +30,67 @@
 #define T_nSEC 0
 #define STX 2
 #define ACK 6
+
+#define DROP_PROB 0.1
+
+typedef struct _unacknode {
+    int seq_num;
+    struct sockaddr* dest_addr;
+    socklen_t dest_len;
+    int flags;
+    int msg_len;
+    char* msg;
+    time_t msg_time;
+    struct _unacknode* next;
+} unack_msg;
+
+typedef struct _recvnode {
+    int msg_len;
+    char* msg;
+    struct _recvnode* next;
+} recv_msg;
+
+typedef struct unacktable_ {
+    int next_seq_num;
+    unack_msg* table;
+    int top;
+    int size;
+} unack_msg_table_t;
+
+typedef struct recvtable_ {
+    recv_msg* table;
+    // int top;
+    int size;
+    // Tail and Head Pointer for inserting and extracting messages 
+    recv_msg* msg_in;
+    recv_msg* msg_out;
+} recv_msg_table_t;
+
+typedef struct _thread_data {
+    int sockfd;
+}thread_data;
+
+unack_msg_table_t* unack_msg_table;
+recv_msg_table_t* recv_msg_table;
+pthread_t r_tid, s_tid;
+pthread_mutex_t unack_mutex;
+pthread_mutex_t recv_mutex;
+
+int r_socket(int domain, int type, int protocol);
+void delete_unack_entry(int seq_num);
+int r_bind(int sockfd, const struct sockaddr* addr, socklen_t addrlen);
+int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struct sockaddr* dest_addr, socklen_t dest_len, int flags);
+ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
+struct timespec recv_time_wait;
+struct timespec recv_time_spill;
+
+int insert_recv_entry(char* msg, int msg_len);
+void delete_recv_entry();
+ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sockaddr* src_addr, socklen_t* addrlen);
+int r_close(int sockfd);
+void* r_thread_handler(void* param);
+void* s_thread_handler(void* param);
+int dropMessage(float p);
 /**
   * Two tables : 
   *    1) Unack'ed Message Table : 
@@ -42,42 +108,6 @@
   *     ACK Format : [Special Char to denote ack message   ] [Sequence Number Field] [NULL]
   */
 
-typedef struct _unacknode {
-    int seq_num;
-    struct sockaddr* dest_addr;
-    socklen_t dest_len;
-    int msg_len;
-    char* msg;
-    struct _unacknode* next;
-} unack_msg;
-
-typedef struct _recvnode {
-    int msg_len;
-    char* msg;
-} recv_msg;
-
-typedef struct unacktable_ {
-    int next_seq_num;
-    unack_msg* table;
-    int top;
-    int size;
-} unack_msg_table_t;
-
-typedef struct recvtable_ {
-    recv_msg* table;
-    int top;
-    int size;
-} recv_msg_table_t;
-
-typedef struct _thread_data {
-    int sockfd;
-}thread_data;
-
-unack_msg_table_t* unack_msg_table;
-recv_msg_table_t* recv_msg_table;
-pthread_t r_tid, s_tid;
-pthread_mutex_t unack_mutex;
-pthread_mutex_t recv_mutex;
 
 int r_socket(int domain, int type, int protocol) {
     if(type != SOCK_MRP) {
@@ -97,9 +127,10 @@ int r_socket(int domain, int type, int protocol) {
     unack_msg_table->size = 0;
 
     recv_msg_table = (recv_msg_table_t*) malloc(sizeof(recv_msg_table_t));
-    recv_msg_table->top = 0;
     recv_msg_table->size = 0;
-    recv_msg_table->table = (recv_msg*) malloc(MAX_TABLE_SIZE * sizeof(recv_msg));
+    recv_msg_table->table = NULL;
+    recv_msg_table->msg_in = NULL;
+    recv_msg_table->msg_out = NULL;
 
     
     thread_data r_param, s_param;
@@ -117,7 +148,7 @@ int r_bind(int sockfd, const struct sockaddr* addr, socklen_t addrlen) {
     return bind(sockfd, addr, addrlen);
 }
 
-int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struct sockaddr* dest_addr, socklen_t dest_len) {
+int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struct sockaddr* dest_addr, socklen_t dest_len, int flags) {
     // create a new entry
     unack_msg* newnode = (unack_msg*) malloc(sizeof(unack_msg));
 
@@ -127,6 +158,7 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
     newnode->msg_len = final_msg_len;
     newnode->msg = (char *) malloc(final_msg_len*sizeof(char));
     memcpy(newnode->msg, buffer, final_msg_len);
+    newnode->flags = flags;
     
     // copy the dest addr and addr len
     newnode->dest_len = dest_len;
@@ -137,7 +169,7 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
     newnode->next = unack_msg_table->table;
     unack_msg_table->table = newnode;
     unack_msg_table->size += 1;
-
+    printf("Inserted into unack: %d\n", seq_num);
     return 0;
 }
 
@@ -151,8 +183,9 @@ void delete_unack_entry(int seq_num) {
         prev = p;
         p = p->next;
     }
+    if(p == NULL) return;
 
-    if(p == unack_msg_table->table) {
+    if(prev == NULL) {
         unack_msg_table->table = unack_msg_table->table->next;
     }else {
         prev->next = p->next;
@@ -161,6 +194,7 @@ void delete_unack_entry(int seq_num) {
     free(p->dest_addr);
     free(p->msg);
     free(p);
+    printf("Deleted %d.\n", seq_num);
 
     return ;
 }
@@ -194,31 +228,79 @@ ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, cons
     // unack_msg_table->size += 1;
     // unack_msg_table->top %= MAX_TABLE_SIZE;
 
-    if(insert_unack_entry(buffer, final_msg_len, seq_num, dest_addr, dest_len) < 0) {
+    if(insert_unack_entry(buffer, final_msg_len, seq_num, dest_addr, dest_len, flags) < 0) {
         perror("ERROR:: unack_msg_table is full. \n");
         return -1;
     }
 
-    return sendto(sockfd, buffer, final_msg_len, flags, dest_addr, dest_len);
+    sendto(sockfd, buffer, final_msg_len, flags, dest_addr, dest_len);
+    return length;
 }
 
-struct timespec recv_time_wait = {0, 4000};
-struct timespec recv_time_spill;
 
-int insert_recv_entry() {
 
+int insert_recv_entry(char* msg, int msg_len) {
+    // printf("Inserting message : %s \n", msg);
+    // Create New Message Entry
+    recv_msg *new_message = (recv_msg *)malloc(sizeof(recv_msg));
+    new_message->msg = (char *) malloc(msg_len*sizeof(char));
+    memcpy(new_message->msg, msg, msg_len*sizeof(char));
+    new_message->msg_len = msg_len;
+    new_message->next = NULL;
+    // printf("new node created.\n");
+    // Insert in appropriate Position
+    // Update Entry and Removal Point
+
+    if(recv_msg_table->table == NULL){
+        // first recvd message    
+        recv_msg_table->table = new_message;
+        recv_msg_table->msg_in = new_message;
+        recv_msg_table->msg_out = new_message;
+    } else {
+        // consectuive recvd messages
+        recv_msg_table->msg_in->next = new_message;
+        recv_msg_table->msg_in = new_message;
+    }
+    
+    // Update table size
+    recv_msg_table->size += 1;
+    // printf("Inserted.\n");
+    return OK;
 }
 
 void delete_recv_entry() {
-    free(recv_msg_table->table[recv_msg_table->top].msg);
+    /* ++======== PREV CODE ============++*/
+    // free(recv_msg_table->table[recv_msg_table->top].msg);
+    // recv_msg_table->top += 1;
+    // recv_msg_table->top %= MAX_TABLE_SIZE;
+    /* ++======== PREV CODE ============++*/
+
+    // Remove first message and update table
+    //printf("Deleting message...\n");
+    recv_msg* extracted_msg = recv_msg_table->msg_out;
+    recv_msg_table->msg_out = extracted_msg->next;
+
+    // Release Memory
+    free(extracted_msg->msg);
+    free(extracted_msg);
+
+    // Update table size
     recv_msg_table->size -= 1;
-    recv_msg_table->top += 1;
-    recv_msg_table->top %= MAX_TABLE_SIZE;
+    //printf("Deleted Message.\n");
 }
 
-ssize_t r_recvfrom(int sockfd, void *restrict buffer, size_t len, int flags, struct sockaddr *restrict src_addr, socklen_t *restrict addrlen) {
-    while(recv_msg_table->size <= 0) {
+ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sockaddr * src_addr, socklen_t * addrlen) {
+    recv_time_wait.tv_sec = 2;
+    recv_time_wait.tv_nsec = 0;
+    pthread_mutex_lock(&recv_mutex);
+    int isMsg = recv_msg_table->size;
+    pthread_mutex_unlock(&recv_mutex);
+    while(isMsg <= 0) {
+        // printf("No message yet waiting...\n");
         nanosleep(&recv_time_wait, &recv_time_spill);
+        pthread_mutex_lock(&recv_mutex);
+        isMsg = recv_msg_table->size;
+        pthread_mutex_unlock(&recv_mutex);
     }
 
     /**
@@ -226,13 +308,23 @@ ssize_t r_recvfrom(int sockfd, void *restrict buffer, size_t len, int flags, str
      *             this behavior may need to be modified
      * 
      */
-    int msg_len = recv_msg_table->table[recv_msg_table->top].msg_len;
-    memcpy(buffer, recv_msg_table->table[recv_msg_table->top].msg, msg_len);
+    /* ++======== PREV CODE ============++*/
+    // int msg_len = recv_msg_table->table[recv_msg_table->top].msg_len;
+    // memcpy(buffer, recv_msg_table->table[recv_msg_table->top].msg, msg_len);
+    /* ++======== PREV CODE ============++*/
+    // printf("Reading message .. \n");
+    pthread_mutex_lock(&recv_mutex);
+    recv_msg* received_msg = recv_msg_table->msg_out;
+    int msg_len = received_msg->msg_len;
+    memcpy(buffer, received_msg->msg, msg_len);
+    delete_recv_entry();
+    pthread_mutex_unlock(&recv_mutex);
+    // printf("Message read. \n");
+    
     // free(recv_msg_table->table[recv_msg_table->top].msg);
     // recv_msg_table->size -= 1;
     // recv_msg_table->top += 1;
     // recv_msg_table->top %= MAX_TABLE_SIZE;
-    delete_recv_entry();
 
     return msg_len;
 }
@@ -271,16 +363,20 @@ void* r_thread_handler(void* param) {
     int sockfd = parameter->sockfd;
     char buffer[MAX_BUFFER_SIZE];
     struct sockaddr_in src_addr;
-    bzero(src_addr, sizeof(src_addr));
+    bzero(&src_addr, sizeof(src_addr));
     socklen_t src_addr_len = sizeof(src_addr);
     int flags = 0;
     while(1) {
         memset(buffer, 0, sizeof(buffer));
-        int char_read = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, flags,(struct sockaddr *)&src_addr, &src_addr_len);
-
+        int char_read = recvfrom(sockfd, buffer, MAX_BUFFER_SIZE, flags, (struct sockaddr *)&src_addr, &src_addr_len);
+        // printf("receved smthing..\n");
+        if(dropMessage(DROP_PROB) == 1) {
+            continue;
+        }
         if(buffer[0] == STX) {
             // data packet, decode find sequence number, store in recv table
             // send ack
+            // printf("message recved : %s \n", buffer+1);
             int seq_num = (buffer[1]-'0')*10 + (buffer[2]-'0');
             char message[MAX_BUFFER_SIZE];
             bzero(message, sizeof(message));
@@ -288,15 +384,18 @@ void* r_thread_handler(void* param) {
             memcpy(message, &buffer[3], char_read-3);
 
             pthread_mutex_lock(&recv_mutex);
-            insert_recv_entry(seq_num, message);
+            insert_recv_entry(message, char_read-3);
             pthread_mutex_unlock(&recv_mutex);
 
             char ackmessage[MAX_BUFFER_SIZE];
             bzero(ackmessage, sizeof(ackmessage));
 
-            sprintf(ackmessage, "%c%c%c", ACK, buffer[1], buffer[2]);
+            ackmessage[0] = ACK;
+            ackmessage[1] = buffer[1];
+            ackmessage[2] = buffer[2];
             
             int flags = 0;
+            printf("Ack sent : %d\n", seq_num);
             sendto(sockfd, ackmessage, 3, flags, (struct sockaddr *)&src_addr, src_addr_len);
 
         } else if(buffer[0] == ACK) {
@@ -308,6 +407,8 @@ void* r_thread_handler(void* param) {
             delete_unack_entry(seq_num);
             pthread_mutex_unlock(&unack_mutex);
 
+            printf("Ack recved : %d\n", seq_num);
+
         }
     }
 
@@ -315,9 +416,67 @@ void* r_thread_handler(void* param) {
 }
 
 void* s_thread_handler(void* param) {
-    struct timespec s_thread_timeout = {T_SEC, T_nSEC};
+
+    thread_data* t_data = (thread_data *)param;
+ 
+    // Define Sleep and Timeout Period
+    struct timespec s_thread_sleep_period = {T_SEC, T_nSEC};
+    double msg_timeout = 2.0*T_SEC;
+
+    // Sleep -> Check -> Retransmit -> Repeat
     while(1) {
-        
+        nanosleep(&s_thread_sleep_period, NULL);
+
+
+        pthread_mutex_lock(&unack_mutex);
+        unack_msg* msglist = unack_msg_table->table;
+        while(msglist != NULL){
+            // pthread_mutex_lock(&unack_mutex);
+            unack_msg* msg_entry = msglist;
+            time_t time_now = time(NULL);
+            double time_elapsed = difftime(time_now, msg_entry->msg_time);
+            if(time_elapsed >= msg_timeout){
+                // Update msg_entry
+                msg_entry->msg_time = time_now;
+                // Retransmit
+                int seq_num = msg_entry->seq_num;
+                size_t final_msg_len = msg_entry->msg_len;
+                struct sockaddr_in destaddr;
+                socklen_t destlen = msg_entry->dest_len;
+                memcpy(&destaddr, msg_entry->dest_addr, destlen);
+                char buffer[final_msg_len];
+                memset(buffer, 0, sizeof(buffer));
+                memcpy(buffer, msg_entry->msg, final_msg_len);
+                msglist = msglist->next; 
+                msg_entry->msg_time = time(NULL);
+                int flags = msg_entry->flags;
+                // pthread_mutex_unlock(&unack_mutex);
+
+                // Doubt-> Normally, we terminate the string by null char.. But here, is it required?
+                int sockfd = t_data->sockfd;
+                printf("Resending : %d\n", seq_num);
+                sendto(sockfd, buffer, final_msg_len, flags, (struct sockaddr *)&destaddr, destlen);
+            } 
+            else {
+                msglist = msglist->next; 
+            }
+        }
+        pthread_mutex_unlock(&unack_mutex);
     }
     pthread_exit(NULL);
 }
+
+
+int dropMessage(float p){
+    float num = rand()%101;
+    num /= 100;
+    if( num < p){
+        return 1;
+    }
+    return 0;
+}
+
+
+// int main(){
+//     return 0;
+// }
