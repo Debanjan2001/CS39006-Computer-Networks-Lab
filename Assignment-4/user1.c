@@ -29,6 +29,7 @@ int main() {
     }
 
     char message[50];
+    memset(message, 0, sizeof(message));
     printf("Enter a message [25-30 characters] :\n");
     scanf("%s", message);
 

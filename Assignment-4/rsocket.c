@@ -58,12 +58,12 @@ typedef struct unacktable_ {
 } unack_msg_table_t;
 
 typedef struct recvtable_ {
-    recv_msg* table;
+    recv_msg* table; // head
     // int top;
     int size;
     // Tail and Head Pointer for inserting and extracting messages 
-    recv_msg* msg_in;
-    recv_msg* msg_out;
+    recv_msg* msg_in; // tail
+    recv_msg* msg_out; // head
 } recv_msg_table_t;
 
 typedef struct _thread_data {
@@ -279,6 +279,7 @@ void delete_recv_entry() {
     //printf("Deleting message...\n");
     recv_msg* extracted_msg = recv_msg_table->msg_out;
     recv_msg_table->msg_out = extracted_msg->next;
+    recv_msg_table->table = recv_msg_table->msg_out;
 
     // Release Memory
     free(extracted_msg->msg);
