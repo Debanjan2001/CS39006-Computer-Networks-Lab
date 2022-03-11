@@ -15,6 +15,8 @@ int main() {
         perror("ERROR:: r_socket() ");
         exit(EXIT_FAILURE);
     }
+    // printf("User1 Sockfd = %d\n",sockfd);
+
     struct sockaddr_in addr;
     socklen_t addrlen = sizeof(addr);
     memset(&addr, 0, sizeof(struct sockaddr_in));

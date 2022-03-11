@@ -133,13 +133,15 @@ int r_socket(int domain, int type, int protocol) {
     recv_msg_table->msg_out = NULL;
 
     
-    thread_data r_param, s_param;
-    r_param.sockfd = sockfd;
-    s_param.sockfd = sockfd;
+    thread_data *r_param = (thread_data *)malloc(sizeof(thread_data));
+    thread_data *s_param = (thread_data *)malloc(sizeof(thread_data));
+    r_param->sockfd = sockfd;
+    s_param->sockfd = sockfd;
+
     pthread_mutex_init(&unack_mutex, NULL);
     pthread_mutex_init(&recv_mutex, NULL);
-    pthread_create(&r_tid, NULL, r_thread_handler, (void *)&r_param);
-    pthread_create(&s_tid, NULL, s_thread_handler, (void *)&s_param);
+    pthread_create(&r_tid, NULL, r_thread_handler, (void *)r_param);
+    pthread_create(&s_tid, NULL, s_thread_handler, (void *)s_param);
 
     return sockfd;
 }
@@ -169,7 +171,7 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
     newnode->next = unack_msg_table->table;
     unack_msg_table->table = newnode;
     unack_msg_table->size += 1;
-    printf("Inserted into unack: %d\n", seq_num);
+    // printf("Inserted into unack: %d\n", seq_num);
     return 0;
 }
 
@@ -194,7 +196,7 @@ void delete_unack_entry(int seq_num) {
     free(p->dest_addr);
     free(p->msg);
     free(p);
-    printf("Deleted %d.\n", seq_num);
+    // printf("Deleted %d.\n", seq_num);
 
     return ;
 }
@@ -396,7 +398,7 @@ void* r_thread_handler(void* param) {
             ackmessage[2] = buffer[2];
             
             int flags = 0;
-            printf("Ack sent : %d\n", seq_num);
+            // printf("Ack sent : %d\n", seq_num);
             sendto(sockfd, ackmessage, 3, flags, (struct sockaddr *)&src_addr, src_addr_len);
 
         } else if(buffer[0] == ACK) {
@@ -408,7 +410,7 @@ void* r_thread_handler(void* param) {
             delete_unack_entry(seq_num);
             pthread_mutex_unlock(&unack_mutex);
 
-            printf("Ack recved : %d\n", seq_num);
+            // printf("Ack recved : %d\n", seq_num);
 
         }
     }
@@ -419,6 +421,8 @@ void* r_thread_handler(void* param) {
 void* s_thread_handler(void* param) {
 
     thread_data* t_data = (thread_data *)param;
+
+    printf("Library knows sockfd=%d\n",t_data->sockfd);
  
     // Define Sleep and Timeout Period
     struct timespec s_thread_sleep_period = {T_SEC, T_nSEC};
@@ -427,7 +431,6 @@ void* s_thread_handler(void* param) {
     // Sleep -> Check -> Retransmit -> Repeat
     while(1) {
         nanosleep(&s_thread_sleep_period, NULL);
-
 
         pthread_mutex_lock(&unack_mutex);
         unack_msg* msglist = unack_msg_table->table;
@@ -449,14 +452,19 @@ void* s_thread_handler(void* param) {
                 memset(buffer, 0, sizeof(buffer));
                 memcpy(buffer, msg_entry->msg, final_msg_len);
                 msglist = msglist->next; 
-                msg_entry->msg_time = time(NULL);
+                msg_entry->msg_time = time(NULL);   
                 int flags = msg_entry->flags;
                 // pthread_mutex_unlock(&unack_mutex);
 
                 // Doubt-> Normally, we terminate the string by null char.. But here, is it required?
+                
                 int sockfd = t_data->sockfd;
+
                 printf("Resending : %d\n", seq_num);
-                sendto(sockfd, buffer, final_msg_len, flags, (struct sockaddr *)&destaddr, destlen);
+                if(sendto(sockfd, buffer, final_msg_len, flags, (struct sockaddr *)&destaddr, destlen)<0){
+                    perror("Sendto() failed\n");
+                    printf("Library sees sockfd = %d\n",sockfd);
+                };
             } 
             else {
                 msglist = msglist->next; 
