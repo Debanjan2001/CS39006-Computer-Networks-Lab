@@ -42,17 +42,21 @@ typedef struct _unacknode {
     char* msg;
     time_t msg_time;
     struct _unacknode* next;
+    struct _unacknode* prev;
 } unack_msg;
 
 typedef struct _recvnode {
     int msg_len;
     char* msg;
+    struct sockaddr* src_addr;
+    socklen_t src_len;
     struct _recvnode* next;
 } recv_msg;
 
 typedef struct unacktable_ {
     int next_seq_num;
     unack_msg* table;
+    unack_msg* tail;
     int top;
     int size;
 } unack_msg_table_t;
@@ -84,7 +88,7 @@ ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, cons
 struct timespec recv_time_wait;
 struct timespec recv_time_spill;
 
-int insert_recv_entry(char* msg, int msg_len);
+int insert_recv_entry(char* msg, int msg_len, struct sockaddr* src_addr, socklen_t src_len);
 void delete_recv_entry();
 ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sockaddr* src_addr, socklen_t* addrlen);
 int r_close(int sockfd);

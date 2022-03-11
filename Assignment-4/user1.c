@@ -52,8 +52,9 @@ int main() {
             perror("ERROR :: r_sendto() ");
         }
     }
-
-    printf("Done.\n");
+    // Dont close r_sock . We dont know if all unack tables have been sent.
     while(1);
+    printf("Done.\n");
+    r_close(sockfd);
     return 0;
 }

@@ -38,14 +38,13 @@ int main() {
     while(1) {
         memset(buffer, 0, sizeof(buffer));
         err = r_recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&dest_addr, &dest_len);
-        printf("Recieved...");
         if(err < 0) {
             perror("ERROR :: r_recvfrom() ");
         }
-        printf(" %s \n", buffer);
+        printf("RECVD : %s \n", buffer);
     }
 
     printf("Done.\n");
-    
+    r_close(sockfd);
     return 0;
 }

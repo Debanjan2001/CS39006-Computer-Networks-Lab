@@ -75,6 +75,7 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
 
     // copy the message and seqnumbers
     newnode->next = NULL;
+    newnode->prev = NULL;
     newnode->seq_num = seq_num;
     newnode->msg_len = final_msg_len;
     newnode->msg = (char *) malloc(final_msg_len*sizeof(char));
@@ -88,6 +89,11 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
     
     // add entry to the unack_msg_table
     newnode->next = unack_msg_table->table;
+    if(unack_msg_table->table != NULL) {
+        unack_msg_table->table->prev = newnode;
+    } else {
+        unack_msg_table->tail = newnode;
+    }
     unack_msg_table->table = newnode;
     unack_msg_table->size += 1;
     // printf("Inserted into unack: %d\n", seq_num);
@@ -96,20 +102,28 @@ int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struc
 
 void delete_unack_entry(int seq_num) {
     unack_msg* p = unack_msg_table->table;
-    unack_msg* prev = NULL;
+    // unack_msg* prev = NULL;
     while (p != NULL) {
         if(p->seq_num == seq_num) {
             break;
         }
-        prev = p;
+        // prev = p;
         p = p->next;
     }
     if(p == NULL) return;
 
-    if(prev == NULL) {
-        unack_msg_table->table = unack_msg_table->table->next;
-    }else {
-        prev->next = p->next;
+    if(p->prev == NULL && p->next == NULL) {
+        unack_msg_table->table = NULL;
+        unack_msg_table->tail = NULL;
+    }else if(p->prev == NULL) {
+        p->next->prev = NULL;
+        unack_msg_table->table = p->next;
+    }else if(p->next == NULL) {
+        p->prev->next = NULL;
+        unack_msg_table->tail = p->prev;
+    }else{
+        p->prev->next = p->next;
+        p->next->prev = p->prev;
     }
     unack_msg_table->size -= 1;
     free(p->dest_addr);
@@ -160,7 +174,7 @@ ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, cons
 
 
 
-int insert_recv_entry(char* msg, int msg_len) {
+int insert_recv_entry(char* msg, int msg_len, struct sockaddr* src_addr, socklen_t src_len) {
     // printf("Inserting message : %s \n", msg);
     // Create New Message Entry
     recv_msg *new_message = (recv_msg *)malloc(sizeof(recv_msg));
@@ -168,11 +182,17 @@ int insert_recv_entry(char* msg, int msg_len) {
     memcpy(new_message->msg, msg, msg_len*sizeof(char));
     new_message->msg_len = msg_len;
     new_message->next = NULL;
+
+    new_message->src_addr = (struct sockaddr*) malloc(sizeof(struct sockaddr));
+    memcpy(new_message->src_addr, src_addr, src_len);
+    new_message->src_len = src_len;
+
+
     // printf("new node created.\n");
     // Insert in appropriate Position
     // Update Entry and Removal Point
 
-    if(recv_msg_table->table == NULL){
+    if(recv_msg_table->table == NULL) {
         // first recvd message    
         recv_msg_table->table = new_message;
         recv_msg_table->msg_in = new_message;
@@ -203,6 +223,7 @@ void delete_recv_entry() {
     recv_msg_table->table = recv_msg_table->msg_out;
 
     // Release Memory
+    free(extracted_msg->src_addr);
     free(extracted_msg->msg);
     free(extracted_msg);
 
@@ -239,6 +260,8 @@ ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sock
     recv_msg* received_msg = recv_msg_table->msg_out;
     int msg_len = received_msg->msg_len;
     memcpy(buffer, received_msg->msg, msg_len);
+    memcpy(src_addr, received_msg->src_addr, received_msg->src_len);
+    *addrlen = received_msg->src_len;
     delete_recv_entry();
     pthread_mutex_unlock(&recv_mutex);
     // printf("Message read. \n");
@@ -300,7 +323,7 @@ void* r_thread_handler(void* param) {
             // send ack
             // printf("message recved : %s \n", buffer+1);
 
-            // int seq_num = (buffer[1]-'0')*10 + (buffer[2]-'0');
+            int seq_num = (buffer[1]-'0')*10 + (buffer[2]-'0');
 
             char message[MAX_BUFFER_SIZE];
             bzero(message, sizeof(message));
@@ -308,7 +331,7 @@ void* r_thread_handler(void* param) {
             memcpy(message, &buffer[3], char_read-3);
 
             pthread_mutex_lock(&recv_mutex);
-            insert_recv_entry(message, char_read-3);
+            insert_recv_entry(message, char_read-3, (struct sockaddr *)&src_addr, src_addr_len);
             pthread_mutex_unlock(&recv_mutex);
 
             char ackmessage[MAX_BUFFER_SIZE];
@@ -319,7 +342,7 @@ void* r_thread_handler(void* param) {
             ackmessage[2] = buffer[2];
             
             int flags = 0;
-            // printf("Ack sent : %d\n", seq_num);
+            printf("ACK SENT : %d\n", seq_num);
             sendto(sockfd, ackmessage, 3, flags, (struct sockaddr *)&src_addr, src_addr_len);
 
         } else if(buffer[0] == ACK) {
@@ -331,7 +354,7 @@ void* r_thread_handler(void* param) {
             delete_unack_entry(seq_num);
             pthread_mutex_unlock(&unack_mutex);
 
-            // printf("Ack recved : %d\n", seq_num);
+            printf("ACK RECVD : %d\n", seq_num);
 
         }
     }
@@ -354,7 +377,7 @@ void* s_thread_handler(void* param) {
         nanosleep(&s_thread_sleep_period, NULL);
 
         pthread_mutex_lock(&unack_mutex);
-        unack_msg* msglist = unack_msg_table->table;
+        unack_msg* msglist = unack_msg_table->tail;
         while(msglist != NULL){
             // pthread_mutex_lock(&unack_mutex);
             unack_msg* msg_entry = msglist;
@@ -372,7 +395,7 @@ void* s_thread_handler(void* param) {
                 char buffer[final_msg_len];
                 memset(buffer, 0, sizeof(buffer));
                 memcpy(buffer, msg_entry->msg, final_msg_len);
-                msglist = msglist->next; 
+                msglist = msglist->prev; 
                 msg_entry->msg_time = time(NULL);   
                 int flags = msg_entry->flags;
                 // pthread_mutex_unlock(&unack_mutex);
@@ -381,14 +404,14 @@ void* s_thread_handler(void* param) {
                 
                 int sockfd = t_data->sockfd;
 
-                printf("Resending : %d\n", seq_num);
+                printf("RESENDING : %d\n", seq_num);
                 if(sendto(sockfd, buffer, final_msg_len, flags, (struct sockaddr *)&destaddr, destlen)<0){
                     perror("Sendto() failed\n");
                     printf("Library sees sockfd = %d\n",sockfd);
                 };
             } 
             else {
-                msglist = msglist->next; 
+                msglist = msglist->prev; 
             }
         }
         pthread_mutex_unlock(&unack_mutex);
