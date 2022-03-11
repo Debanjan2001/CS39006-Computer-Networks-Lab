@@ -6,7 +6,7 @@
 #define PORT 50097
 #define RCVPORT 50096
 
-#include "rsocket.c"
+#include "rsocket.h"
 
 int main() {
 

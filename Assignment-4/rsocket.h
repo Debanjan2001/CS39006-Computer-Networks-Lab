@@ -30,6 +30,8 @@
 #define T_nSEC 0
 #define STX 2
 #define ACK 6
+#define DROP_PROB 0.1
+
 
 typedef struct _unacknode {
     int seq_num;
@@ -56,12 +58,12 @@ typedef struct unacktable_ {
 } unack_msg_table_t;
 
 typedef struct recvtable_ {
-    recv_msg* table;
+    recv_msg* table; // head
     // int top;
     int size;
     // Tail and Head Pointer for inserting and extracting messages 
-    recv_msg* msg_in;
-    recv_msg* msg_out;
+    recv_msg* msg_in; // tail
+    recv_msg* msg_out; // head
 } recv_msg_table_t;
 
 typedef struct _thread_data {
@@ -77,15 +79,16 @@ pthread_mutex_t recv_mutex;
 int r_socket(int domain, int type, int protocol);
 void delete_unack_entry(int seq_num);
 int r_bind(int sockfd, const struct sockaddr* addr, socklen_t addrlen);
-int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struct sockaddr* dest_addr, socklen_t dest_len);
+int insert_unack_entry(char* buffer, int final_msg_len, int seq_num, const struct sockaddr* dest_addr, socklen_t dest_len, int flags);
 ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
 struct timespec recv_time_wait;
 struct timespec recv_time_spill;
 
 int insert_recv_entry(char* msg, int msg_len);
 void delete_recv_entry();
-ssize_t r_recvfrom(int sockfd, void *buffer, size_t len, int flags, struct sockaddr* src_addr, socklen_t* addrlen);
+ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sockaddr* src_addr, socklen_t* addrlen);
 int r_close(int sockfd);
 void* r_thread_handler(void* param);
 void* s_thread_handler(void* param);
+
 int dropMessage(float p);

@@ -1,9 +1,5 @@
-gcc user1.c -lpthread -o user1
-./user1
+Run using this command: 
 
-gcc user2.c -lpthread -o user2
-./user2
-
-Library and linking is left.
-Only few tests done.
-Test more.
+```
+gcc -Wall user1.c -L. -lrsocket -lpthread -o user1
+```
