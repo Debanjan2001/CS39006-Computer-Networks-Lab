@@ -1,0 +1,5 @@
+Run using this command: 
+
+```
+gcc -Wall user1.c -L. -lrsocket -lpthread -o user1
+```
