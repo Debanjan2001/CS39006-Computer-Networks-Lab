@@ -421,8 +421,7 @@ void* s_thread_handler(void* param) {
 
 
 int dropMessage(float p){
-    float num = rand()%101;
-    num /= 100;
+    float num = (double)rand() / (double)RAND_MAX;
     if( num < p){
         return 1;
     }
