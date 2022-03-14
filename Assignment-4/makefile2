@@ -1,0 +1,3 @@
+user: user1.c user2.c
+	gcc -Wall user1.c -L. -lrsocket -lpthread -o user1
+	gcc -Wall user2.c -L. -lrsocket -lpthread -o user2

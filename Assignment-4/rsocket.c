@@ -42,7 +42,6 @@ int r_socket(int domain, int type, int protocol) {
     unack_msg_table = (unack_msg_table_t*) malloc(sizeof(unack_msg_table_t));
     unack_msg_table->next_seq_num = 0;
     unack_msg_table->table = NULL;//(unack_msg*) malloc(MAX_TABLE_SIZE * sizeof(unack_msg));
-    // unack_msg_table->top = 0;
     unack_msg_table->size = 0;
 
     recv_msg_table = (recv_msg_table_t*) malloc(sizeof(recv_msg_table_t));
@@ -135,11 +134,7 @@ void delete_unack_entry(int seq_num) {
 }
 
 ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) {
-    /**
-     * ASSUMPTION: current sequence number should be maintained globally.
-     *             since the higher level application should model only the 
-     * 
-     */
+
     int seq_num = unack_msg_table->next_seq_num;
     unack_msg_table->next_seq_num += 1;
     unack_msg_table->next_seq_num %= MAX_SEQ_NUM;
@@ -152,16 +147,6 @@ ssize_t r_sendto(int sockfd, const void* message, size_t length, int flags, cons
     buffer[2] = '0' + seq_num%10;
 
     memcpy(&buffer[3], (const char *)message, length);
-
-    // memcpy(&unack_msg_table->table[unack_msg_table->top].dest_addr, dest_addr, dest_len);
-    // unack_msg_table->table[unack_msg_table->top].msg = (char *) malloc(final_msg_len*sizeof(char));
-    // memcpy(&unack_msg_table->table[unack_msg_table->top].msg, buffer, final_msg_len);
-    // unack_msg_table->table[unack_msg_table->top].msg_len = final_msg_len;
-    // unack_msg_table->table[unack_msg_table->top].seq_num = seq_num;
-
-    // unack_msg_table->top += 1;
-    // unack_msg_table->size += 1;
-    // unack_msg_table->top %= MAX_TABLE_SIZE;
 
     if(insert_unack_entry(buffer, final_msg_len, seq_num, dest_addr, dest_len, flags) < 0) {
         perror("ERROR:: unack_msg_table is full. \n");
@@ -210,11 +195,6 @@ int insert_recv_entry(char* msg, int msg_len, struct sockaddr* src_addr, socklen
 }
 
 void delete_recv_entry() {
-    /* ++======== PREV CODE ============++*/
-    // free(recv_msg_table->table[recv_msg_table->top].msg);
-    // recv_msg_table->top += 1;
-    // recv_msg_table->top %= MAX_TABLE_SIZE;
-    /* ++======== PREV CODE ============++*/
 
     // Remove first message and update table
     //printf("Deleting message...\n");
@@ -251,10 +231,6 @@ ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sock
      *             this behavior may need to be modified
      * 
      */
-    /* ++======== PREV CODE ============++*/
-    // int msg_len = recv_msg_table->table[recv_msg_table->top].msg_len;
-    // memcpy(buffer, recv_msg_table->table[recv_msg_table->top].msg, msg_len);
-    /* ++======== PREV CODE ============++*/
     // printf("Reading message .. \n");
     pthread_mutex_lock(&recv_mutex);
     recv_msg* received_msg = recv_msg_table->msg_out;
@@ -266,11 +242,6 @@ ssize_t r_recvfrom(int sockfd, void * buffer, size_t len, int flags, struct sock
     pthread_mutex_unlock(&recv_mutex);
     // printf("Message read. \n");
     
-    // free(recv_msg_table->table[recv_msg_table->top].msg);
-    // recv_msg_table->size -= 1;
-    // recv_msg_table->top += 1;
-    // recv_msg_table->top %= MAX_TABLE_SIZE;
-
     return msg_len;
 }
 
@@ -296,14 +267,7 @@ int r_close(int sockfd) {
 }
 
 void* r_thread_handler(void* param) {
-    /**
-     * DOUBT: what should be the buffer_length since we dont know what length to expect
-     *        correspondingly, we must there is a header that denotes ack / normal messages
-     *        so splitting a message midway may lead to confusion
-     *        one solution is fixing the packet length...
-     *        second is using what we used last time to code the packet length as well 
-     * 
-     */ 
+    
     thread_data * parameter = (thread_data *) param;
     int sockfd = parameter->sockfd;
     char buffer[MAX_BUFFER_SIZE];

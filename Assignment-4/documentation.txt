@@ -1,10 +1,24 @@
-Run using this command: 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>> INSTRUCTION TO RUN MAKEFILE <<<<<<<<<<<<<<<<<<<<<<
 
-```
-gcc -Wall user1.c -L. -lrsocket -lpthread -o user1
-```
+- To generate librsocket.a , run 'makefile1' using the following command: 
+
+    make -f makefile1
+
+- To generate the executables from the user1.c and user2.c , please use 'makefile2' using the following command:
+
+    make -f makefile2 
+
+- Now two executable files will be created in the same directory - user1, user2
+
+- Run them using the following command in two separate command-lines : 
+ 
+    ./user1
+    ./user2 
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> EXPERIMENT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
     String sent: "abcdefghijklmnopqrstuvwxyz"
     Length = 26
     
