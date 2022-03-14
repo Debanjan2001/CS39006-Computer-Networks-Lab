@@ -57,7 +57,7 @@ typedef struct unacktable_ {
     int next_seq_num;
     unack_msg* table;
     unack_msg* tail;
-    int top;
+    // int top;
     int size;
 } unack_msg_table_t;
 
