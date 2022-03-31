@@ -2,7 +2,7 @@
  * @file task.c
  * @author DEBANJAN SAHA + PRITKUMAR GODHANI
  * @brief 19CS30014 + 19CS10048
- * @version 0.1
+ * @version 0.2
  * @date 2022-03-24
  * @copyright Copyright (c) 2022
  *
@@ -51,28 +51,17 @@ void cleanup(int S1, int S2) {
 }
 
 double get_timedelta(clock_t start, clock_t end){
+	// Returns timedelta in miliseconds
 	double timedelta = (((double) (end - start)) / CLOCKS_PER_SEC)*1000 ;
 	return timedelta; 
 }
 
 
-/**
- * @brief
- * https://www.binarytides.com/raw-udp-sockets-c-linux/
- */
 
 int main(int argc, char *argv[]) {
 
-	int debug_mode = 0;
-	for(int i=1;i<argc;i++){
-		if( strcmp(argv[i],"-d") == 0 || strcmp(argv[i],"--debug") == 0){
-			debug_mode = 1;
-			break;
-		} 
-	}
-
 	/**
-	 * Step-1
+	 * Step-1 : Extracting the IP Address from domain name
 	 */
 	if (argc < 2) {
 		fprintf(stderr, "Argument Error: Destination Domain Name Not Found.\n");
@@ -80,9 +69,6 @@ int main(int argc, char *argv[]) {
 	}
 	char *dest_domain_name = argv[1];
 	
-	// DEBUG
-	(debug_mode && printf("dest domain=%s\n", dest_domain_name));
-
 	struct hostent *dest_info;
 	struct in_addr **dest_addr_list;
 
@@ -94,12 +80,9 @@ int main(int argc, char *argv[]) {
 	dest_addr_list = (struct in_addr **)(dest_info->h_addr_list);
 	char* dest_ip = inet_ntoa(*dest_addr_list[0]);
 
-	// DEBUG
-	(debug_mode && printf("IP = %s\n", dest_ip));
-
 
 	/**
-	 * Step-2
+	 * Step-2: Creating the Raw Sockets and binding them to localhost
 	 */
 	int S1, S2;
 	struct sockaddr_in source_addr;
@@ -143,7 +126,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/**
-	 * Step-3
+	 * Step-3 :Indicate that IP Headers will be provided manually.
 	 */
 	const int on = 1;
 	if (setsockopt(S1, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
@@ -158,9 +141,7 @@ int main(int argc, char *argv[]) {
 
 
 	/**
-	 * Step-4
-	 * Works:
-	 *  - Running in a loop
+	 * Step-4 : Sending a UDP Packet
 	 */
 	int TTL = 1;
 	int num_repeats = 0;
@@ -170,9 +151,6 @@ int main(int argc, char *argv[]) {
 
 	while(TTL <= TTL_LIMIT) {
 		
-		// DEBUG
-		(debug_mode && printf("TTL = %d\n", TTL));
-
 		char datagram[DATAGRAM_SIZE];
 		bzero(datagram, sizeof(datagram));
 
@@ -184,9 +162,6 @@ int main(int argc, char *argv[]) {
 		generate_payload(payload, PAYLOAD_SIZE);
 		strcpy(datagram_payload_dump_site, payload);
 
-		//DEBUG
-		(debug_mode && printf("Data = %s\n",datagram_payload_dump_site));
-
 		// IP hdr
 		iph->ihl = 5;
 		iph->version = 4;
@@ -195,6 +170,7 @@ int main(int argc, char *argv[]) {
 		iph->id = htons(IPHDR_UNIQUE_ID);
 		iph->ttl = TTL;
 		iph->protocol = IPPROTO_UDP;
+		iph->frag_off = 0;
 		iph->saddr = 0;
 		iph->daddr = dest_addr;
 		iph->check = 0;
@@ -213,10 +189,8 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 
-		num_repeats += 1;
-
 		/**
-		 * Step-5
+		 * Step-5 : Waiting on select() for receiving ICMP Packet
 		 */
 
 		char buffer[MAX_BUF_LEN];
@@ -245,7 +219,7 @@ int main(int argc, char *argv[]) {
 			}
 
 			/**
-			 * Step-6
+			 * Step-6 : Handling cases when select [comes/doesn't come] out with ICMP message
 			 */
 
 			if (FD_ISSET(S2, &readfds)) {
@@ -256,14 +230,10 @@ int main(int argc, char *argv[]) {
 				clock_t recv_time = clock();
 				double timedelta = get_timedelta(send_time, recv_time);
 				
-				// DEBUG
-				(debug_mode && printf("S2 has something to share 😁\n"));
-
-				if (recv_len <= 0) {
-					// Do something
-					(debug_mode && printf("Nothing came out of recvfrom 😐"));
-					continue;
-				}
+				// if (recv_len <= 0) {
+				// 	// Nothing to receive? shouldn't happen. Retry
+				// 	continue;
+				// }
 
 				struct iphdr *ip_reply = ((struct iphdr *)buffer);
 				struct icmphdr *icmp_reply = ((struct icmphdr *)(buffer + sizeof(struct iphdr)));
@@ -274,20 +244,29 @@ int main(int argc, char *argv[]) {
 				if (ip_reply->protocol == 1) {
 
 					if (icmp_reply->type == 3) {
+						/**
+						 * Step-6.b:  ICMP  Destination  Unreachable  Message
+						 */
 
 						if (iph->daddr == ip_reply->saddr) {
-							// print time and all stuff.
+
 							printf("%-10d %-15s %10f ms\n", TTL, inet_ntoa(iph_addr), timedelta);
 							cleanup(S1, S2);
 							exit(EXIT_SUCCESS);
-						} else {
-							fprintf(stderr, "Could this be an attack from a hacker/bot?");
-							cleanup(S1, S2);
-							exit(EXIT_FAILURE);
-						}
+
+						} 
+
+						// else {
+						// 	fprintf(stderr, "Could this be an attack from a hacker/bot?");
+						// 	cleanup(S1, S2);
+						// 	exit(EXIT_FAILURE);
+						// }
 
 					} else if (icmp_reply->type == 11) {
-						// print and stuff
+
+						/**
+						 * Transition from Step-6.c --> Step-8
+						 */
 						printf("%-10d %-15s %10f ms\n", TTL, inet_ntoa(iph_addr), timedelta);
 
 						TTL += 1;
@@ -299,7 +278,9 @@ int main(int argc, char *argv[]) {
 					} 
 
 				} else {
-					// go back to wait on select  with remaining time
+					/**
+					 * Step-6.d : Spurious packet, go back to wait on select with remaining time
+					 */
 					int rem_time_usec = 1000000 - timedelta * 1000;
 					timeout.tv_sec = 0;
 					timeout.tv_usec = rem_time_usec;
@@ -307,10 +288,17 @@ int main(int argc, char *argv[]) {
 				}
 
 			} else {
-				// increase ttl
-				// on max 3 repeats
+				/**
+				 * Step 7:  When select call times out , repeat from step-4
+				 */
+				num_repeats += 1;
+
+				// increase ttl on max 3 repeats
 				if(num_repeats == 3){
 					
+					/**
+					 * Step 8: When 3 timeouts have occurred, increase TTL
+					 */
 					printf("%-10d %-15s %10s\n", TTL, "*", "*");
 
 					TTL += 1;
